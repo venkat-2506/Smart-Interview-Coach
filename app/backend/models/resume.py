@@ -1,18 +1,28 @@
 """Resume ORM model."""
 
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.backend.database.session import Base
 
 
 class Resume(Base):
-    """Stores metadata for uploaded resume files."""
+    """Stores metadata and AI analysis results for uploaded resume files.
+
+    Columns added in Resume Intelligence phase:
+        - extracted_text:  Raw text extracted from the PDF.
+        - resume_analysis: JSON string from Gemini structured analysis.
+        - detected_role:   JSON string from Gemini role detection.
+        - extracted_skills:JSON string from Gemini skill extraction.
+        - is_processed:    True once the full AI pipeline has completed.
+    """
 
     __tablename__ = "resumes"
 
+    # --- Core Upload Fields ---
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
@@ -22,5 +32,12 @@ class Resume(Base):
     upload_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    # --- AI Intelligence Fields (nullable until pipeline runs) ---
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resume_analysis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    detected_role: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    extracted_skills: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     user = relationship("User", backref="resumes")
