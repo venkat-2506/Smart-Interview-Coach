@@ -1,7 +1,5 @@
 """Streamlit frontend entry point."""
 
-import json
-
 import requests
 import streamlit as st
 
@@ -12,25 +10,67 @@ APP_SUBTITLE = "AI-Powered Interview Preparation Platform"
 
 st.set_page_config(page_title=APP_TITLE, layout="wide")
 
-st.title(APP_TITLE)
-st.subheader(APP_SUBTITLE)
 
-# Initialize session state variables
-if "access_token" not in st.session_state:
-    st.session_state["access_token"] = None
+# ---------------------------------------------------------------------------
+# Session state initialisation
+# ---------------------------------------------------------------------------
+
+def init_session() -> None:
+    """Initialise all session-state keys once per session."""
+    defaults = {
+        "access_token": None,
+        "resume_id": None,
+        "resume_analyzed": False,
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+init_session()
 
 
 # ---------------------------------------------------------------------------
-# Helper
+# Helper utilities
 # ---------------------------------------------------------------------------
+
+def is_logged_in() -> bool:
+    """Return True if a JWT token is present in session state."""
+    return bool(st.session_state.get("access_token"))
+
 
 def get_auth_headers() -> dict:
     """Return the Authorization header for API requests."""
     return {"Authorization": f"Bearer {st.session_state['access_token']}"}
 
 
+def clear_session() -> None:
+    """Wipe all session-state keys and reset to defaults."""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    init_session()
+
+
+def _is_connection_error(exc: Exception) -> bool:
+    """Return True if the exception is a network connection failure."""
+    msg = str(exc).lower()
+    return "connectionerror" in type(exc).__name__.lower() or "connection" in msg
+
+
 # ---------------------------------------------------------------------------
-# Pages
+# Centered app header (always visible)
+# ---------------------------------------------------------------------------
+
+def render_header() -> None:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.title(APP_TITLE)
+        st.subheader(APP_SUBTITLE)
+    st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Auth pages  (shown when NOT logged in)
 # ---------------------------------------------------------------------------
 
 def login_page() -> None:
@@ -43,178 +83,250 @@ def login_page() -> None:
         if not email or not password:
             st.error("Please enter both email and password.")
             return
-
         try:
             response = requests.post(
                 f"{API_BASE_URL}/auth/login",
                 json={"email": email, "password": password},
+                timeout=10,
             )
             if response.status_code == 200:
                 data = response.json()
                 st.session_state["access_token"] = data["access_token"]
-                st.success("Login successful!")
                 st.rerun()
             else:
-                error_msg = response.json().get("detail", "Unknown error")
-                st.error(f"Login failed: {error_msg}")
+                error_msg = response.json().get("detail", "Login failed. Please try again.")
+                st.error(error_msg)
+        except requests.exceptions.ConnectionError:
+            st.error("Cannot connect to the server. Please make sure the backend is running.")
+        except requests.exceptions.Timeout:
+            st.error("Request timed out. Please try again.")
         except Exception as e:
-            st.error(f"Error connecting to server: {e}")
+            st.error(f"Unexpected error: {e}")
 
 
 def register_page() -> None:
     """Render the registration form."""
     st.header("Register")
-    full_name = st.text_input("Full Name")
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
+    full_name = st.text_input("Full Name", key="reg_full_name")
+    email = st.text_input("Email", key="reg_email")
+    password = st.text_input("Password", type="password", key="reg_password")
 
     if st.button("Register"):
         if not full_name or not email or not password:
             st.error("Please fill in all fields.")
             return
-
         try:
             response = requests.post(
                 f"{API_BASE_URL}/auth/register",
                 json={"full_name": full_name, "email": email, "password": password},
+                timeout=10,
             )
             if response.status_code == 201:
-                st.success("Registration successful! Please login.")
+                st.success("Registration successful! Please go to the Login tab to sign in.")
             else:
-                error_msg = response.json().get("detail", "Unknown error")
-                st.error(f"Registration failed: {error_msg}")
+                error_msg = response.json().get("detail", "Registration failed. Please try again.")
+                st.error(error_msg)
+        except requests.exceptions.ConnectionError:
+            st.error("Cannot connect to the server. Please make sure the backend is running.")
+        except requests.exceptions.Timeout:
+            st.error("Request timed out. Please try again.")
         except Exception as e:
-            st.error(f"Error connecting to server: {e}")
+            st.error(f"Unexpected error: {e}")
+
+
+def auth_screen() -> None:
+    """Show Login / Register tabs for unauthenticated users."""
+    tab_login, tab_register = st.tabs(["Login", "Register"])
+    with tab_login:
+        login_page()
+    with tab_register:
+        register_page()
+
+
+# ---------------------------------------------------------------------------
+# Protected pages (shown only when logged in)
+# ---------------------------------------------------------------------------
+
+def _handle_response_error(resp: requests.Response, context: str) -> bool:
+    """
+    Check for auth or server errors on a response.
+    Returns True if caller should stop rendering.
+    Clears session on 401/403 and triggers rerun.
+    """
+    if resp.status_code in (401, 403):
+        clear_session()
+        st.warning("Your session has expired. Please log in again.")
+        st.rerun()
+    if resp.status_code == 500:
+        st.error(f"Server error while {context}. Please try again later.")
+        return True
+    if resp.status_code not in (200, 201):
+        detail = resp.json().get("detail", f"Error while {context}.")
+        st.error(detail)
+        return True
+    return False
+
+
+def _build_faiss_index(resume_id: int) -> bool:
+    """
+    Build the FAISS index for a resume after upload.
+    Returns True on success, False on failure.
+    """
+    try:
+        headers = get_auth_headers()
+        resp = requests.post(
+            f"{API_BASE_URL}/resume/{resume_id}/index",
+            headers=headers,
+            timeout=60,
+        )
+        if resp.status_code == 200:
+            return True
+        detail = resp.json().get("detail", "Indexing failed.")
+        st.warning(f"Resume uploaded but indexing failed: {detail}. The Knowledge Assistant may not work.")
+        return False
+    except requests.exceptions.ConnectionError:
+        st.warning("Resume uploaded but could not build search index. Check your connection.")
+        return False
+    except Exception:
+        st.warning("Resume uploaded but indexing encountered an error.")
+        return False
 
 
 def display_analysis_results(resume_id: int) -> None:
-    """Fetch and display AI analysis results for the uploaded resume.
-
-    Makes three separate API calls to get the full analysis,
-    detected role, and extracted skills, then renders each section.
-    """
+    """Fetch and display AI analysis results for the uploaded resume."""
     headers = get_auth_headers()
 
     # --- Section 1: Structured Analysis ---
     st.subheader("Resume Analysis")
     try:
-        resp = requests.get(f"{API_BASE_URL}/resume/{resume_id}/analysis", headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            analysis = data.get("analysis")
-            if analysis:
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.markdown("**Full Name**")
-                    st.write(analysis.get("full_name", "N/A"))
-
-                    st.markdown("**Email**")
-                    st.write(analysis.get("email", "N/A"))
-
-                    st.markdown("**Phone**")
-                    st.write(analysis.get("phone", "N/A"))
-
-                with col2:
-                    certifications = analysis.get("certifications", [])
-                    st.markdown("**Certifications**")
-                    if certifications:
-                        for cert in certifications:
-                            st.write(f"• {cert}")
-                    else:
-                        st.write("None listed")
-
-                # Education
-                st.markdown("---")
-                st.markdown("**Education**")
-                education_list = analysis.get("education", [])
-                if education_list:
-                    for edu in education_list:
-                        st.write(
-                            f"• {edu.get('degree', '')} in {edu.get('field', '')} "
-                            f"— {edu.get('institution', '')} ({edu.get('year', '')})"
-                        )
-                else:
-                    st.write("No education details found.")
-
-                # Experience
-                st.markdown("**Experience**")
-                experience_list = analysis.get("experience", [])
-                if experience_list:
-                    for exp in experience_list:
-                        st.write(
-                            f"• **{exp.get('role', '')}** at {exp.get('company', '')} "
-                            f"({exp.get('duration', '')})"
-                        )
-                        if exp.get("description"):
-                            st.caption(exp["description"])
-                else:
-                    st.write("No experience details found.")
-
-                # Projects
-                st.markdown("**Projects**")
-                projects_list = analysis.get("projects", [])
-                if projects_list:
-                    for project in projects_list:
-                        tech_str = ", ".join(project.get("technologies", []))
-                        st.write(f"• **{project.get('name', '')}**: {project.get('description', '')}")
-                        if tech_str:
-                            st.caption(f"Technologies: {tech_str}")
-                else:
-                    st.write("No projects found.")
+        resp = requests.get(
+            f"{API_BASE_URL}/resume/{resume_id}/analysis",
+            headers=headers,
+            timeout=30,
+        )
+        if _handle_response_error(resp, "loading analysis"):
+            return
+        data = resp.json()
+        analysis = data.get("analysis")
+        if not analysis:
+            st.info(data.get("message", "Analysis not available."))
         else:
-            st.warning("Could not load analysis results.")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**Full Name**")
+                st.write(analysis.get("full_name", "N/A"))
+                st.markdown("**Email**")
+                st.write(analysis.get("email", "N/A"))
+                st.markdown("**Phone**")
+                st.write(analysis.get("phone", "N/A"))
+            with col2:
+                certifications = analysis.get("certifications", [])
+                st.markdown("**Certifications**")
+                if certifications:
+                    for cert in certifications:
+                        st.write(f"• {cert}")
+                else:
+                    st.write("None listed")
+
+            st.markdown("---")
+            st.markdown("**Education**")
+            education_list = analysis.get("education", [])
+            if education_list:
+                for edu in education_list:
+                    st.write(
+                        f"• {edu.get('degree', '')} in {edu.get('field', '')} "
+                        f"— {edu.get('institution', '')} ({edu.get('year', '')})"
+                    )
+            else:
+                st.write("No education details found.")
+
+            st.markdown("**Experience**")
+            experience_list = analysis.get("experience", [])
+            if experience_list:
+                for exp in experience_list:
+                    st.write(
+                        f"• **{exp.get('role', '')}** at {exp.get('company', '')} "
+                        f"({exp.get('duration', '')})"
+                    )
+                    if exp.get("description"):
+                        st.caption(exp["description"])
+            else:
+                st.write("No experience details found.")
+
+            st.markdown("**Projects**")
+            projects_list = analysis.get("projects", [])
+            if projects_list:
+                for project in projects_list:
+                    tech_str = ", ".join(project.get("technologies", []))
+                    st.write(f"• **{project.get('name', '')}**: {project.get('description', '')}")
+                    if tech_str:
+                        st.caption(f"Technologies: {tech_str}")
+            else:
+                st.write("No projects found.")
+
+    except requests.exceptions.ConnectionError:
+        st.error("Cannot connect to the server to load analysis.")
     except Exception as e:
-        st.error(f"Error fetching analysis: {e}")
+        st.error(f"Error loading analysis: {e}")
 
     # --- Section 2: Detected Role ---
     st.subheader("Detected Job Role")
     try:
-        resp = requests.get(f"{API_BASE_URL}/resume/{resume_id}/role", headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            role = data.get("role")
-            if role:
-                st.success(f"Primary Role: **{role.get('primary_role', 'N/A')}**")
-
-                alt_roles = role.get("alternative_roles", [])
-                if alt_roles:
-                    st.write("Alternative Roles: " + ", ".join(alt_roles))
-
-                st.caption(f"Reason: {role.get('reason', '')}")
+        resp = requests.get(
+            f"{API_BASE_URL}/resume/{resume_id}/role",
+            headers=headers,
+            timeout=30,
+        )
+        if _handle_response_error(resp, "loading role"):
+            return
+        data = resp.json()
+        role = data.get("role")
+        if not role:
+            st.info(data.get("message", "Role not detected."))
         else:
-            st.warning("Could not load role detection results.")
+            st.success(f"Primary Role: **{role.get('primary_role', 'N/A')}**")
+            alt_roles = role.get("alternative_roles", [])
+            if alt_roles:
+                st.write("Alternative Roles: " + ", ".join(alt_roles))
+            if role.get("reason"):
+                st.caption(f"Reason: {role.get('reason')}")
+    except requests.exceptions.ConnectionError:
+        st.error("Cannot connect to the server to load role detection.")
     except Exception as e:
-        st.error(f"Error fetching role: {e}")
+        st.error(f"Error loading role: {e}")
 
     # --- Section 3: Skills ---
     st.subheader("Extracted Skills")
     try:
-        resp = requests.get(f"{API_BASE_URL}/resume/{resume_id}/skills", headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            skills = data.get("skills")
-            if skills:
-                skill_col1, skill_col2 = st.columns(2)
-                with skill_col1:
-                    for category in ["programming_languages", "frameworks", "libraries", "databases"]:
-                        items = skills.get(category, [])
-                        if items:
-                            label = category.replace("_", " ").title()
-                            st.markdown(f"**{label}**")
-                            st.write(", ".join(items))
-
-                with skill_col2:
-                    for category in ["cloud_platforms", "developer_tools", "soft_skills"]:
-                        items = skills.get(category, [])
-                        if items:
-                            label = category.replace("_", " ").title()
-                            st.markdown(f"**{label}**")
-                            st.write(", ".join(items))
+        resp = requests.get(
+            f"{API_BASE_URL}/resume/{resume_id}/skills",
+            headers=headers,
+            timeout=30,
+        )
+        if _handle_response_error(resp, "loading skills"):
+            return
+        data = resp.json()
+        skills = data.get("skills")
+        if not skills:
+            st.info(data.get("message", "Skills not extracted."))
         else:
-            st.warning("Could not load skills data.")
+            skill_col1, skill_col2 = st.columns(2)
+            with skill_col1:
+                for category in ["programming_languages", "frameworks", "libraries", "databases"]:
+                    items = skills.get(category, [])
+                    if items:
+                        st.markdown(f"**{category.replace('_', ' ').title()}**")
+                        st.write(", ".join(items))
+            with skill_col2:
+                for category in ["cloud_platforms", "developer_tools", "soft_skills"]:
+                    items = skills.get(category, [])
+                    if items:
+                        st.markdown(f"**{category.replace('_', ' ').title()}**")
+                        st.write(", ".join(items))
+    except requests.exceptions.ConnectionError:
+        st.error("Cannot connect to the server to load skills.")
     except Exception as e:
-        st.error(f"Error fetching skills: {e}")
+        st.error(f"Error loading skills: {e}")
 
 
 def upload_page() -> None:
@@ -222,74 +334,198 @@ def upload_page() -> None:
     st.header("Upload Resume")
     st.write("Upload your resume in PDF format. (Max 5 MB)")
     st.info(
-        "After uploading, the AI will automatically analyze your resume "
-        "and extract your skills, experience, and best-fit job role."
+        "After uploading, the AI will automatically analyze your resume and extract "
+        "your skills, experience, and best-fit job role."
     )
+    st.divider()
 
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
     if st.button("Upload and Analyze"):
         if not uploaded_file:
-            st.error("Please select a file first.")
+            st.error("Please select a file before uploading.")
             return
 
         try:
             headers = get_auth_headers()
-            files = {
-                "file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")
-            }
+            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
 
-            with st.spinner("Uploading and analyzing your resume. This may take a moment..."):
+            with st.spinner("Uploading and analyzing your resume. This may take a minute..."):
                 response = requests.post(
                     f"{API_BASE_URL}/resume/upload",
                     headers=headers,
                     files=files,
+                    timeout=120,
                 )
 
-            if response.status_code == 201:
-                data = response.json()
-                resume_id = data.get("resume_id")
-                st.success("Resume uploaded and analyzed successfully!")
-                st.write(f"Resume ID: **{resume_id}**")
-                st.divider()
+            if response.status_code in (401, 403):
+                clear_session()
+                st.warning("Your session has expired. Please log in again.")
+                st.rerun()
+                return
 
-                # Display the full AI analysis results
-                display_analysis_results(resume_id)
+            if response.status_code == 500:
+                detail = response.json().get("detail", "")
+                if "quota" in detail.lower() or "429" in detail:
+                    st.error(
+                        "The AI service is temporarily unavailable due to quota limits. "
+                        "Please wait a few minutes and try again."
+                    )
+                else:
+                    st.error("Server error during analysis. Please try again.")
+                return
 
-            else:
-                error_msg = response.json().get("detail", "Unknown error")
-                st.error(f"Upload failed: {error_msg}")
-                if response.status_code == 401:
-                    st.session_state["access_token"] = None
-                    st.rerun()
+            if response.status_code != 201:
+                error_msg = response.json().get("detail", "Upload failed. Please try again.")
+                st.error(error_msg)
+                return
+
+            data = response.json()
+            resume_id = data.get("resume_id")
+            st.session_state["resume_id"] = resume_id
+            st.success("Resume uploaded and analyzed successfully!")
+
+            # Build FAISS index so Knowledge Assistant works
+            with st.spinner("Building search index for the Knowledge Assistant..."):
+                _build_faiss_index(resume_id)
+
+            st.session_state["resume_analyzed"] = True
+            st.divider()
+            display_analysis_results(resume_id)
+
+        except requests.exceptions.ConnectionError:
+            st.error("Cannot connect to the server. Please make sure the backend is running.")
+        except requests.exceptions.Timeout:
+            st.error(
+                "The request timed out. Resume analysis can take up to 2 minutes. "
+                "Please try again."
+            )
         except Exception as e:
-            st.error(f"Error connecting to server: {e}")
+            st.error(f"Unexpected error during upload: {e}")
+
+
+def resume_rag_page() -> None:
+    """Render the Resume Knowledge Assistant page."""
+    if not st.session_state.get("resume_analyzed"):
+        st.info(
+            "No resume found in this session. "
+            "Please upload your resume first via the 'Upload Resume' page."
+        )
+        return
+
+    st.header("Resume Knowledge Assistant")
+    st.success("Your resume has been analyzed and indexed.")
+    st.write(
+        "Ask anything about your resume — projects, experience, skills, "
+        "certifications, education, or interview preparation."
+    )
+    st.caption(
+        "This assistant only answers questions about your resume. "
+        "Unrelated questions will receive a polite notice."
+    )
+    st.divider()
+
+    with st.expander("Example Questions"):
+        for ex in [
+            "Explain my Customer Churn Prediction project.",
+            "Generate interview questions from my resume.",
+            "Explain my internship experience.",
+            "What technical skills should I revise?",
+            "Tell me about my SQL experience.",
+            "How should I explain my final project?",
+            "What questions can HR ask from my resume?",
+            "What are my strengths?",
+            "How should I introduce myself?",
+        ]:
+            st.write(f"- {ex}")
+
+    st.divider()
+    query = st.text_input("Ask a question about your resume", placeholder="e.g., Tell me about my projects.")
+
+    if st.button("Search"):
+        if not query.strip():
+            st.error("Please enter a question.")
+            return
+
+        with st.spinner("Searching your resume..."):
+            try:
+                headers = get_auth_headers()
+                resp = requests.post(
+                    f"{API_BASE_URL}/resume/{st.session_state['resume_id']}/retrieve",
+                    headers=headers,
+                    json={"query": query, "top_k": 4},
+                    timeout=30,
+                )
+
+                if resp.status_code in (401, 403):
+                    clear_session()
+                    st.warning("Your session has expired. Please log in again.")
+                    st.rerun()
+                    return
+
+                if resp.status_code == 404:
+                    detail = resp.json().get("detail", "")
+                    if "has not been indexed" in detail.lower():
+                        st.warning(
+                            "The search index for your resume is missing. "
+                            "Please go to 'Upload Resume' and re-upload your resume."
+                        )
+                    else:
+                        st.error("Resume not found. Please upload your resume again.")
+                    return
+
+                if _handle_response_error(resp, "searching resume"):
+                    return
+
+                data = resp.json()
+                chunks = data.get("chunks", [])
+                if not chunks:
+                    st.warning("No relevant information found for your query. Try rephrasing.")
+                else:
+                    st.success(f"Found {len(chunks)} relevant section(s) from your resume.")
+                    for i, chunk in enumerate(chunks, start=1):
+                        with st.expander(f"Result {i}  |  Relevance score: {chunk['score']:.4f}"):
+                            st.write(chunk["chunk_text"])
+
+            except requests.exceptions.ConnectionError:
+                st.error("Cannot connect to the server. Please make sure the backend is running.")
+            except requests.exceptions.Timeout:
+                st.error("Request timed out. Please try again.")
+            except Exception as e:
+                st.error(f"Unexpected error: {e}")
 
 
 def logout_page() -> None:
-    """Render the logout page."""
+    """Clear the session and redirect to Login."""
     st.header("Logout")
+    st.write("Click below to securely log out of your account.")
     if st.button("Logout"):
-        st.session_state["access_token"] = None
-        st.success("Logged out successfully.")
+        clear_session()
         st.rerun()
 
 
 # ---------------------------------------------------------------------------
-# Navigation
+# Main app routing
 # ---------------------------------------------------------------------------
 
-st.sidebar.header("Navigation")
+render_header()
 
-if st.session_state["access_token"] is None:
-    page = st.sidebar.radio("Go to", ["Login", "Register"])
-    if page == "Login":
-        login_page()
-    elif page == "Register":
-        register_page()
+if not is_logged_in():
+    # Unauthenticated — show Login / Register only
+    auth_screen()
 else:
-    page = st.sidebar.radio("Go to", ["Upload Resume", "Logout"])
+    # Authenticated — show protected sidebar and pages
+    st.sidebar.header("Navigation")
+    st.sidebar.markdown("---")
+    page = st.sidebar.radio(
+        "Go to",
+        ["Upload Resume", "Resume Knowledge Assistant", "Logout"],
+        key="nav_page",
+    )
+
     if page == "Upload Resume":
         upload_page()
+    elif page == "Resume Knowledge Assistant":
+        resume_rag_page()
     elif page == "Logout":
         logout_page()

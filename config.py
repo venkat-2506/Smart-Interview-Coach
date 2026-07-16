@@ -13,7 +13,11 @@ class Settings(BaseModel):
     """Centralized application settings loaded from environment variables."""
 
     gemini_api_key: str = Field(default="")
-    gemini_model: str = Field(default="gemini-2.0-flash")
+    gemini_model: str = Field(default="gemini-1.5-flash")
+    embedding_model_name: str = Field(default="all-MiniLM-L6-v2")
+    rag_chunk_size: int = Field(default=500)
+    rag_chunk_overlap: int = Field(default=50)
+    rag_index_dir: str = Field(default="data/indexes")
     secret_key: str = Field(default="change-me-in-production")
     algorithm: str = Field(default="HS256")
     access_token_expire_minutes: int = Field(default=30)
@@ -24,7 +28,11 @@ class Settings(BaseModel):
         """Load settings from environment variables."""
         return cls(
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+            embedding_model_name=os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"),
+            rag_chunk_size=int(os.getenv("RAG_CHUNK_SIZE", "500")),
+            rag_chunk_overlap=int(os.getenv("RAG_CHUNK_OVERLAP", "50")),
+            rag_index_dir=os.getenv("RAG_INDEX_DIR", "data/indexes"),
             secret_key=os.getenv("SECRET_KEY", "change-me-in-production"),
             algorithm=os.getenv("ALGORITHM", "HS256"),
             access_token_expire_minutes=int(

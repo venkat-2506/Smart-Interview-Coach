@@ -40,4 +40,11 @@ class Resume(Base):
     extracted_skills: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # --- RAG Fields ---
+    is_indexed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    vector_index_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    chunk_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    embedding_model: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     user = relationship("User", backref="resumes")

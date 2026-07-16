@@ -1,12 +1,14 @@
 """Resume API router.
 
 Contains all resume-related endpoints:
-    - POST /resume/upload         — Upload a PDF resume
-    - POST /resume/{id}/analyze   — Trigger AI analysis pipeline
-    - GET  /resume/{id}           — Get resume metadata
-    - GET  /resume/{id}/analysis  — Get structured AI analysis
-    - GET  /resume/{id}/skills    — Get extracted skills
-    - GET  /resume/{id}/role      — Get detected role
+    - POST /resume/upload             — Upload a PDF resume
+    - GET  /resume/{id}               — Get resume metadata
+    - GET  /resume/{id}/analysis      — Get structured AI analysis
+    - GET  /resume/{id}/skills        — Get extracted skills
+    - GET  /resume/{id}/role          — Get detected role
+    - POST /resume/{id}/index         — Build FAISS index for a resume
+    - GET  /resume/{id}/status        — Get RAG index status
+    - POST /resume/{id}/retrieve      — Retrieve relevant chunks for a query
 """
 
 import json
@@ -25,7 +27,15 @@ from app.backend.schemas.resume import (
     ResumeRoleResponse,
     ResumeSkillsResponse,
 )
+from app.backend.schemas.resume_rag import (
+    ResumeIndexResponse,
+    ResumeRetrieveRequest,
+    ResumeRetrieveResponse,
+    ResumeStatusResponse,
+    ChunkResponse,
+)
 from app.backend.services.resume_intelligence_service import process_resume
+from app.backend.services.resume_rag_service import index_resume, retrieve_resume_chunks
 from app.backend.services.resume_service import upload_resume
 
 router = APIRouter(prefix="/resume", tags=["Resume"])
@@ -162,4 +172,87 @@ def get_resume_role(
         resume_id=resume_id,
         role=role_dict,
         message="Role detected.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# RAG Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/{resume_id}/index", response_model=ResumeIndexResponse, status_code=200)
+def index(
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ResumeIndexResponse:
+    """Build a FAISS vector index for a resume.
+
+    Chunks the resume text, generates embeddings, and stores
+    the FAISS index to disk. Updates resume metadata in the database.
+    """
+    _get_resume_for_user(resume_id, current_user, db)
+    result = index_resume(resume_id, db)
+    return ResumeIndexResponse(**result)
+
+
+@router.get("/{resume_id}/status", response_model=ResumeStatusResponse)
+def get_index_status(
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ResumeStatusResponse:
+    """Return the current RAG indexing status for a resume."""
+    resume = _get_resume_for_user(resume_id, current_user, db)
+
+    if not resume.is_indexed:
+        return ResumeStatusResponse(
+            resume_id=resume_id,
+            is_indexed=False,
+            message="Resume has not been indexed yet.",
+        )
+
+    return ResumeStatusResponse(
+        resume_id=resume_id,
+        is_indexed=resume.is_indexed,
+        chunk_count=resume.chunk_count,
+        embedding_model=resume.embedding_model,
+        vector_index_path=resume.vector_index_path,
+        indexed_at=resume.indexed_at,
+        message="Resume is indexed and ready for retrieval.",
+    )
+
+
+@router.post("/{resume_id}/retrieve", response_model=ResumeRetrieveResponse)
+def retrieve(
+    resume_id: int,
+    body: ResumeRetrieveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ResumeRetrieveResponse:
+    """Retrieve relevant resume chunks for a search query.
+
+    Performs similarity search against the FAISS index using the query
+    and returns the top matching text chunks with metadata and scores.
+    No LLM calls are made.
+    """
+    _get_resume_for_user(resume_id, current_user, db)
+    chunks = retrieve_resume_chunks(resume_id, body.query, body.top_k, db)
+
+    chunk_responses = [
+        ChunkResponse(
+            chunk_id=c["chunk_id"],
+            chunk_text=c["chunk_text"],
+            start_position=c["start_position"],
+            end_position=c["end_position"],
+            score=c["score"],
+        )
+        for c in chunks
+    ]
+
+    return ResumeRetrieveResponse(
+        resume_id=resume_id,
+        query=body.query,
+        top_k=body.top_k,
+        chunks=chunk_responses,
+        message=f"Retrieved {len(chunk_responses)} relevant chunks.",
     )

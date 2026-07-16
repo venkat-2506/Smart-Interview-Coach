@@ -84,3 +84,8 @@ uvicorn==0.50.0
 watchdog==6.0.0
 websockets==16.0
 win32_setctime==1.2.0
+
+# RAG Dependencies
+sentence-transformers==3.0.1
+faiss-cpu==1.8.0.post1
+langchain-text-splitters==0.3.0
