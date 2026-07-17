@@ -5,9 +5,7 @@ with structured JSON sidecar metadata.
 """
 
 import json
-import os
 from pathlib import Path
-from typing import Optional
 
 import faiss
 import numpy as np

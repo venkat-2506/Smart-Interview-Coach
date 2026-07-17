@@ -4,7 +4,6 @@ Responsibility: Take a file path and return the extracted plain text.
 Nothing else. This is a reusable utility that future AI modules can import.
 """
 
-import re
 from pathlib import Path
 
 from loguru import logger

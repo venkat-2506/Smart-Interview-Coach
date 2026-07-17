@@ -10,8 +10,8 @@ from app.backend.core.handlers import register_exception_handlers
 from app.backend.utils.logger import setup_logger
 from app.backend.database.session import engine, Base
 # Import models so SQLAlchemy knows about them before creating tables
-from app.backend.models.user import User
-from app.backend.models.resume import Resume
+from app.backend.models.user import User  # noqa: F401
+from app.backend.models.resume import Resume  # noqa: F401
 from app.backend.api.auth import router as auth_router
 from app.backend.api.resume import router as resume_router
 from config import get_settings

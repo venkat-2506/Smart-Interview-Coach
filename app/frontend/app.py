@@ -21,6 +21,7 @@ def init_session() -> None:
         "access_token": None,
         "resume_id": None,
         "resume_analyzed": False,
+        "chat_history": [],
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -389,6 +390,8 @@ def upload_page() -> None:
             with st.spinner("Building search index for the Knowledge Assistant..."):
                 _build_faiss_index(resume_id)
 
+            # Reset chat history when a new resume is uploaded
+            st.session_state["chat_history"] = []
             st.session_state["resume_analyzed"] = True
             st.divider()
             display_analysis_results(resume_id)
@@ -405,7 +408,7 @@ def upload_page() -> None:
 
 
 def resume_rag_page() -> None:
-    """Render the Resume Knowledge Assistant page."""
+    """Render the conversational Resume Knowledge Assistant."""
     if not st.session_state.get("resume_analyzed"):
         st.info(
             "No resume found in this session. "
@@ -414,85 +417,105 @@ def resume_rag_page() -> None:
         return
 
     st.header("Resume Knowledge Assistant")
-    st.success("Your resume has been analyzed and indexed.")
     st.write(
         "Ask anything about your resume — projects, experience, skills, "
-        "certifications, education, or interview preparation."
-    )
-    st.caption(
-        "This assistant only answers questions about your resume. "
-        "Unrelated questions will receive a polite notice."
+        "certifications, education, interview preparation, or technical topics."
     )
     st.divider()
 
-    with st.expander("Example Questions"):
-        for ex in [
+    # Example questions expander
+    with st.expander("Example Questions", expanded=False):
+        examples = [
             "Explain my Customer Churn Prediction project.",
             "Generate interview questions from my resume.",
+            "Explain SQL joins.",
             "Explain my internship experience.",
-            "What technical skills should I revise?",
-            "Tell me about my SQL experience.",
-            "How should I explain my final project?",
+            "What strengths does my resume highlight?",
+            "What technical skills should I revise before interviews?",
+            "How should I introduce myself in an interview?",
             "What questions can HR ask from my resume?",
-            "What are my strengths?",
-            "How should I introduce myself?",
-        ]:
+        ]
+        for ex in examples:
             st.write(f"- {ex}")
 
     st.divider()
-    query = st.text_input("Ask a question about your resume", placeholder="e.g., Tell me about my projects.")
 
-    if st.button("Search"):
-        if not query.strip():
-            st.error("Please enter a question.")
-            return
+    # Render existing conversation history
+    for message in st.session_state["chat_history"]:
+        role = message["role"]
+        content = message["content"]
+        if role == "user":
+            with st.chat_message("user"):
+                st.write(content)
+        else:
+            with st.chat_message("assistant"):
+                st.markdown(content)
 
-        with st.spinner("Searching your resume..."):
-            try:
-                headers = get_auth_headers()
-                resp = requests.post(
-                    f"{API_BASE_URL}/resume/{st.session_state['resume_id']}/retrieve",
-                    headers=headers,
-                    json={"query": query, "top_k": 4},
-                    timeout=30,
-                )
+    # Chat input at the bottom
+    user_input = st.chat_input("Ask anything about your resume...")
 
-                if resp.status_code in (401, 403):
-                    clear_session()
-                    st.warning("Your session has expired. Please log in again.")
-                    st.rerun()
-                    return
+    if user_input and user_input.strip():
+        question = user_input.strip()
 
-                if resp.status_code == 404:
-                    detail = resp.json().get("detail", "")
-                    if "has not been indexed" in detail.lower():
+        # Immediately display the user message
+        with st.chat_message("user"):
+            st.write(question)
+
+        # Call the backend chat endpoint
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    headers = get_auth_headers()
+                    payload = {
+                        "question": question,
+                        "history": st.session_state["chat_history"],
+                        "top_k": 5,
+                    }
+                    resp = requests.post(
+                        f"{API_BASE_URL}/resume/{st.session_state['resume_id']}/chat",
+                        headers=headers,
+                        json=payload,
+                        timeout=60,
+                    )
+
+                    if resp.status_code in (401, 403):
+                        clear_session()
+                        st.warning("Your session has expired. Please log in again.")
+                        st.rerun()
+                        return
+
+                    if resp.status_code == 422:
                         st.warning(
                             "The search index for your resume is missing. "
                             "Please go to 'Upload Resume' and re-upload your resume."
                         )
-                    else:
-                        st.error("Resume not found. Please upload your resume again.")
-                    return
+                        return
 
-                if _handle_response_error(resp, "searching resume"):
-                    return
+                    if _handle_response_error(resp, "generating answer"):
+                        return
 
-                data = resp.json()
-                chunks = data.get("chunks", [])
-                if not chunks:
-                    st.warning("No relevant information found for your query. Try rephrasing.")
-                else:
-                    st.success(f"Found {len(chunks)} relevant section(s) from your resume.")
-                    for i, chunk in enumerate(chunks, start=1):
-                        with st.expander(f"Result {i}  |  Relevance score: {chunk['score']:.4f}"):
-                            st.write(chunk["chunk_text"])
+                    data = resp.json()
+                    answer = data.get("answer", "I could not generate an answer. Please try again.")
+                    st.markdown(answer)
 
-            except requests.exceptions.ConnectionError:
-                st.error("Cannot connect to the server. Please make sure the backend is running.")
-            except requests.exceptions.Timeout:
-                st.error("Request timed out. Please try again.")
-            except Exception as e:
-                st.error(f"Unexpected error: {e}")
+                    # Append to history after successful response
+                    st.session_state["chat_history"].append(
+                        {"role": "user", "content": question}
+                    )
+                    st.session_state["chat_history"].append(
+                        {"role": "assistant", "content": answer}
+                    )
+
+                except requests.exceptions.ConnectionError:
+                    st.error(
+                        "Cannot connect to the server. Please make sure the backend is running."
+                    )
+                except requests.exceptions.Timeout:
+                    st.error(
+                        "The request timed out. Please try again."
+                    )
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
 
 
 def logout_page() -> None:

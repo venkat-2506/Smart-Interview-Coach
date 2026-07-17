@@ -14,9 +14,9 @@ class Resume(Base):
 
     Columns added in Resume Intelligence phase:
         - extracted_text:  Raw text extracted from the PDF.
-        - resume_analysis: JSON string from Gemini structured analysis.
-        - detected_role:   JSON string from Gemini role detection.
-        - extracted_skills:JSON string from Gemini skill extraction.
+        - resume_analysis: JSON string from LLM structured analysis.
+        - detected_role:   JSON string from LLM role detection.
+        - extracted_skills:JSON string from LLM skill extraction.
         - is_processed:    True once the full AI pipeline has completed.
     """
 

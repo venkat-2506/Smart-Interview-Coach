@@ -4,7 +4,6 @@ These schemas define the exact shape of data returned by resume endpoints.
 Using Pydantic ensures the data is always validated and serialized correctly.
 """
 
-import json
 from datetime import datetime
 from typing import Optional
 
@@ -28,7 +27,7 @@ class ResumeMetadataResponse(BaseModel):
 class ResumeAnalysisResponse(BaseModel):
     """Schema for AI analysis returned by GET /resume/{id}/analysis.
 
-    The analysis field contains the full structured JSON from Gemini,
+    The analysis field contains the full structured JSON from the LLM,
     returned as a plain Python dict for maximum flexibility.
     """
 

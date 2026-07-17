@@ -9,6 +9,7 @@ Contains all resume-related endpoints:
     - POST /resume/{id}/index         — Build FAISS index for a resume
     - GET  /resume/{id}/status        — Get RAG index status
     - POST /resume/{id}/retrieve      — Retrieve relevant chunks for a query
+    - POST /resume/{id}/chat          — Conversational Knowledge Assistant
 """
 
 import json
@@ -34,6 +35,11 @@ from app.backend.schemas.resume_rag import (
     ResumeStatusResponse,
     ChunkResponse,
 )
+from app.backend.schemas.resume_chat import (
+    ResumeChatRequest,
+    ResumeChatResponse,
+)
+from app.backend.services.resume_chat_service import answer_resume_question
 from app.backend.services.resume_intelligence_service import process_resume
 from app.backend.services.resume_rag_service import index_resume, retrieve_resume_chunks
 from app.backend.services.resume_service import upload_resume
@@ -111,7 +117,7 @@ def get_resume_analysis(
     """Return the structured AI analysis of a resume.
 
     The analysis includes name, email, phone, education, experience,
-    projects, certifications, skills, and technologies extracted by Gemini.
+    projects, certifications, skills, and technologies extracted by the LLM.
     """
     resume = _get_resume_for_user(resume_id, current_user, db)
 
@@ -256,3 +262,28 @@ def retrieve(
         chunks=chunk_responses,
         message=f"Retrieved {len(chunk_responses)} relevant chunks.",
     )
+
+
+@router.post("/{resume_id}/chat", response_model=ResumeChatResponse)
+def chat(
+    resume_id: int,
+    body: ResumeChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ResumeChatResponse:
+    """Conversational Resume Knowledge Assistant.
+
+    Accepts a question and optional conversation history.
+    Runs a guardrail check, retrieves relevant resume chunks via FAISS,
+    builds a contextual prompt, calls the LLM, and returns a natural
+    language answer. Chunk IDs and scores are never exposed.
+    """
+    _get_resume_for_user(resume_id, current_user, db)
+    result = answer_resume_question(
+        resume_id=resume_id,
+        question=body.question,
+        history=body.history,
+        top_k=body.top_k,
+        db=db,
+    )
+    return ResumeChatResponse(**result)
