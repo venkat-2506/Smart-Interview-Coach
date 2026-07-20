@@ -12,8 +12,10 @@ from app.backend.database.session import engine, Base
 # Import models so SQLAlchemy knows about them before creating tables
 from app.backend.models.user import User  # noqa: F401
 from app.backend.models.resume import Resume  # noqa: F401
+from app.backend.interview.models import InterviewSession, InterviewMessage  # noqa: F401
 from app.backend.api.auth import router as auth_router
 from app.backend.api.resume import router as resume_router
+from app.backend.interview.routes import router as interview_router
 from config import get_settings
 
 
@@ -47,6 +49,7 @@ def create_app() -> FastAPI:
     # Register routers for Authentication and Resume
     app.include_router(auth_router)
     app.include_router(resume_router)
+    app.include_router(interview_router)
 
     @app.get("/")
     async def root() -> dict[str, str]:

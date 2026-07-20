@@ -83,4 +83,10 @@ win32_setctime==1.2.0
 # RAG Dependencies
 sentence-transformers==3.0.1
 faiss-cpu==1.8.0.post1
-langchain-text-splitters==0.3.0
+langchain-text-splitters==1.1.2
+
+# LangGraph & Agent dependencies
+langchain==1.3.14
+langchain-core==1.4.9
+langchain-groq==1.1.3
+langgraph==1.2.9

@@ -1,0 +1,44 @@
+[
+    {
+        "chunk_id": "resume_7_chunk_0",
+        "chunk_text": "Miriyam Lak shmi Venk at\n\n+91 -8125734393     venkatmiriyam19@gmail.com      Linked In",
+        "start_position": 0,
+        "end_position": 86
+    },
+    {
+        "chunk_id": "resume_7_chunk_1",
+        "chunk_text": "Second -year B.Tech Computer Science student with strong foundations in Python, Java, SQL, and Data Structures. Experienced in\ndeveloping data -driven web applications, and machine learning models. Actively participated in national -level hackathons with\nproven teamwork, problem -solving, and analytical skills. Looking to contribute technical proficiency and problem -solving skills to\ninnovative projects solving real -world business and data challenges.\nEducatio n",
+        "start_position": 88,
+        "end_position": 556
+    },
+    {
+        "chunk_id": "resume_7_chunk_2",
+        "chunk_text": "Educatio n\nBachelor of Technology (B.Tech) in Computer Science and Engineering - AI/ML\nVIT-AP University | 2024   2028\nCGPA : 8.7 / 10\nSkills\nProgramming Languages: Python, Java, HTML , CSS,  JavaScript\nDatabase s : SQL (MySQL)\nCore Computer Science Concepts : Data Structures & Algorithms , Object -Oriented Programming\nDeveloper Tools : Git, Visual Studio Code",
+        "start_position": 546,
+        "end_position": 908
+    },
+    {
+        "chunk_id": "resume_7_chunk_3",
+        "chunk_text": "Projects",
+        "start_position": 910,
+        "end_position": 918
+    },
+    {
+        "chunk_id": "resume_7_chunk_4",
+        "chunk_text": "Cosmic Explorer  | Python , React.j s\nDesigned and developed a 3D space mission simulator for interactive and gamified orbital mechanics visualization.\nImplemented an Intercept Mission Engine with real -time trajectory and  V calculations based on physics principles.\nDeveloped custom APIs to handle mission datasets, intercept computations, and AI -assisted mission queries.\nIntegrated an AI Mission Assistant to guide users with contextual mission insights and physics explanations.",
+        "start_position": 920,
+        "end_position": 1404
+    },
+    {
+        "chunk_id": "resume_7_chunk_5",
+        "chunk_text": "Used In -dexedDB for persistent local storage of mission history without requiring user authentication.\nCombined frontend engineering, physics -based logic, API design, AI integration within a hackathon timeline.",
+        "start_position": 1405,
+        "end_position": 1617
+    },
+    {
+        "chunk_id": "resume_7_chunk_6",
+        "chunk_text": "Achievements  & Certifications\n\nTop 5 Finalist : Newton School of Technology Hackathon  (CTRL+Space) 2025.\nAI Foundations Associa te Certificate : Oracle Foundations\nIntroduction to P ython: SoloLea rn\nLanguages\nEnglish\nHindi\nTelugu\nSummary",
+        "start_position": 1619,
+        "end_position": 1859
+    }
+]

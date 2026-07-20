@@ -22,6 +22,15 @@ def init_session() -> None:
         "resume_id": None,
         "resume_analyzed": False,
         "chat_history": [],
+        "interview_started": False,
+        "interview_session_id": None,
+        "interview_current_question": None,
+        "interview_question_number": 1,
+        "interview_stage": None,
+        "interview_topic": None,
+        "interview_difficulty": None,
+        "interview_completed": False,
+        "interview_message": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -518,6 +527,180 @@ def resume_rag_page() -> None:
                     st.error(f"Unexpected error: {e}")
 
 
+def interview_page() -> None:
+    """Render the Interview Coach page."""
+    if not st.session_state.get("resume_analyzed"):
+        st.info("Please upload and analyze a resume first to prepare for the interview.")
+        return
+
+    st.header("Interview Coach")
+    st.write(
+        "Practice mock interviews or quick assessments customized for your target job role. "
+        "The engine dynamically plans your interview and generates resume-aware questions."
+    )
+    st.divider()
+
+    # Case 1: Setup interview
+    if not st.session_state.get("interview_started") and not st.session_state.get("interview_completed"):
+        role = st.text_input("Target Job Role", value="Software Engineer", placeholder="e.g. Frontend Developer, Data Scientist")
+        mode = st.selectbox("Interview Mode", ["Mock Interview", "Quick Assessment"])
+        
+        # Audio / Video toggles for S3 extensions
+        camera_enabled = st.toggle("Enable Camera Compatibility (Mock Interview only)", value=False)
+        microphone_enabled = st.toggle("Enable Microphone Compatibility (Mock Interview only)", value=False)
+        
+        if st.button("Start Interview"):
+            if not role.strip():
+                st.error("Please specify a target job role.")
+                return
+            
+            with st.spinner("Generating interview plan and first question..."):
+                try:
+                    headers = get_auth_headers()
+                    payload = {
+                        "role": role.strip(),
+                        "mode": mode,
+                        "camera_enabled": camera_enabled,
+                        "microphone_enabled": microphone_enabled
+                    }
+                    resp = requests.post(
+                        f"{API_BASE_URL}/interview/start",
+                        headers=headers,
+                        json=payload,
+                        timeout=90,
+                    )
+                    
+                    if resp.status_code in (401, 403):
+                        clear_session()
+                        st.warning("Your session has expired. Please log in again.")
+                        st.rerun()
+                        return
+                    
+                    if _handle_response_error(resp, "starting interview"):
+                        return
+                    
+                    data = resp.json()
+                    st.session_state["interview_session_id"] = data["session_id"]
+                    st.session_state["interview_current_question"] = data["current_question"]
+                    st.session_state["interview_question_number"] = data["current_question_number"]
+                    st.session_state["interview_stage"] = data["current_stage"]
+                    st.session_state["interview_topic"] = data["current_topic"]
+                    st.session_state["interview_difficulty"] = data["current_difficulty"]
+                    st.session_state["interview_started"] = True
+                    st.session_state["interview_completed"] = False
+                    st.rerun()
+                    
+                except requests.exceptions.ConnectionError:
+                    st.error("Cannot connect to the server. Please make sure the backend is running.")
+                except requests.exceptions.Timeout:
+                    st.error("The request timed out. Please try again.")
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
+
+    # Case 2: Active interview
+    elif st.session_state.get("interview_started") and not st.session_state.get("interview_completed"):
+        # Display session progress
+        st.subheader(f"Question {st.session_state.interview_question_number}")
+        
+        stage_display = st.session_state.interview_stage.replace('_', ' ').title()
+        st.caption(
+            f"**Stage:** {stage_display}  |  "
+            f"**Topic:** {st.session_state.interview_topic}  |  "
+            f"**Difficulty:** {st.session_state.interview_difficulty.title()}"
+        )
+        
+        # Display the current question in a clean bubble
+        st.info(st.session_state.interview_current_question)
+        
+        user_answer = st.text_area("Your Response", key="active_user_answer", height=150, placeholder="Type your response here...")
+        
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("Submit and Next"):
+                if not user_answer.strip():
+                    st.error("Please enter a response before submitting.")
+                    return
+                
+                with st.spinner("Submitting answer and fetching next question..."):
+                    try:
+                        headers = get_auth_headers()
+                        resp = requests.post(
+                            f"{API_BASE_URL}/interview/{st.session_state.interview_session_id}/answer",
+                            headers=headers,
+                            json={"answer": user_answer.strip()},
+                            timeout=60,
+                        )
+                        
+                        if resp.status_code in (401, 403):
+                            clear_session()
+                            st.warning("Your session has expired. Please log in again.")
+                            st.rerun()
+                            return
+                        
+                        if _handle_response_error(resp, "submitting answer"):
+                            return
+                        
+                        data = resp.json()
+                        if data["completed"]:
+                            st.session_state["interview_completed"] = True
+                            st.session_state["interview_started"] = False
+                            st.session_state["interview_message"] = data["message"]
+                        else:
+                            st.session_state["interview_current_question"] = data["next_question"]
+                            st.session_state["interview_question_number"] = data["next_question_number"]
+                            st.session_state["interview_stage"] = data["next_stage"]
+                            st.session_state["interview_topic"] = data["next_topic"]
+                            st.session_state["interview_difficulty"] = data["next_difficulty"]
+                        
+                        st.rerun()
+                        
+                    except requests.exceptions.ConnectionError:
+                        st.error("Cannot connect to the server. Please make sure the backend is running.")
+                    except requests.exceptions.Timeout:
+                        st.error("The request timed out. Please try again.")
+                    except Exception as e:
+                        st.error(f"Unexpected error: {e}")
+        with col2:
+            if st.button("End Interview"):
+                with st.spinner("Ending interview..."):
+                    try:
+                        headers = get_auth_headers()
+                        resp = requests.post(
+                            f"{API_BASE_URL}/interview/{st.session_state.interview_session_id}/end",
+                            headers=headers,
+                            timeout=30,
+                        )
+                        if resp.status_code in (401, 403):
+                            clear_session()
+                            st.warning("Your session has expired. Please log in again.")
+                            st.rerun()
+                            return
+                        
+                        st.session_state["interview_completed"] = True
+                        st.session_state["interview_started"] = False
+                        st.session_state["interview_message"] = "Interview manually ended."
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Unexpected error: {e}")
+
+    # Case 3: Completed interview
+    elif st.session_state.get("interview_completed"):
+        st.success("Interview Session Concluded")
+        st.write(st.session_state.get("interview_message", "Thank you for completing the interview!"))
+        
+        if st.button("Start New Assessment"):
+            st.session_state["interview_started"] = False
+            st.session_state["interview_session_id"] = None
+            st.session_state["interview_current_question"] = None
+            st.session_state["interview_question_number"] = 1
+            st.session_state["interview_stage"] = None
+            st.session_state["interview_topic"] = None
+            st.session_state["interview_difficulty"] = None
+            st.session_state["interview_completed"] = False
+            st.session_state["interview_message"] = None
+            st.rerun()
+
+
 def logout_page() -> None:
     """Clear the session and redirect to Login."""
     st.header("Logout")
@@ -542,7 +725,7 @@ else:
     st.sidebar.markdown("---")
     page = st.sidebar.radio(
         "Go to",
-        ["Upload Resume", "Resume Knowledge Assistant", "Logout"],
+        ["Upload Resume", "Resume Knowledge Assistant", "Interview Coach", "Logout"],
         key="nav_page",
     )
 
@@ -550,5 +733,7 @@ else:
         upload_page()
     elif page == "Resume Knowledge Assistant":
         resume_rag_page()
+    elif page == "Interview Coach":
+        interview_page()
     elif page == "Logout":
         logout_page()

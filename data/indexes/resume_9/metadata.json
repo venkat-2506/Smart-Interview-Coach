@@ -1,0 +1,44 @@
+[
+    {
+        "chunk_id": "resume_9_chunk_0",
+        "chunk_text": "1",
+        "start_position": 0,
+        "end_position": 1
+    },
+    {
+        "chunk_id": "resume_9_chunk_1",
+        "chunk_text": "Summary DAMASANI NAGA SATHVIK\n+91 7675975489 | dnagasathvik@gmail.com | LinkedIn | GitHub\nComputer Science undergraduate with strong foundations in algorithms, data structures, machine learning, and software engineering,\ncomplemented by hands-on experience in Python and Java. Developed end-to-end machine learning applications involving data prepossessing,\nfeature engineering, model development, and analytics. Actively exploring Large Language Models (LLMs), Retrieval- Augmented Generation",
+        "start_position": 3,
+        "end_position": 496
+    },
+    {
+        "chunk_id": "resume_9_chunk_2",
+        "chunk_text": "(RAG), AI agents, and intelligent automation systems. Interested in applied AI research, scalable machine learning systems, and building\nimpactful solutions to real-world challenges through data-driven innovation.\nEducation\nBachelor of Technology in Computer Science\nVellore Institute of Technology, Andhra Pradesh CGPA: 8.55\nIntermediate (Class XII)\nNarayana Junior College, Tirupati, Andhra Pradesh Percentage: 96%\nSkills\nProgramming Languages: Python, Java, SQL",
+        "start_position": 497,
+        "end_position": 961
+    },
+    {
+        "chunk_id": "resume_9_chunk_3",
+        "chunk_text": "Skills\nProgramming Languages: Python, Java, SQL\nMachine Learning & AI: Machine Learning, Generative AI, LLM Applications, AI Agents\nFrameworks & Libraries: Scikit-learn, Pandas, NumPy\nTools & Technologies: Git, GitHub, Data Visualization\nResearch Interests: Large Language Models (LLMs), Agentic AI Systems, Intelligent Automation, AI for Scientific Discovery, AI\nApplications in Astrophysics\nProjects\nCustomer Churn Prediction System\nMachine Learning | Predictive Analytics | Python | Scikit-learn",
+        "start_position": 914,
+        "end_position": 1412
+    },
+    {
+        "chunk_id": "resume_9_chunk_4",
+        "chunk_text": "Designed and developed an end-to-end machine learning pipeline to predict customer churn using demographic, subscription, and\nbehavioral datasets.\nConducted extensive data prepossessing and feature engineering, including missing-value handling, categorical encoding, nor- malization,\nand feature selection.\nTrained and evaluated multiple supervised learning models to analyze customer churn probability and identify high-risk customer segments.",
+        "start_position": 1413,
+        "end_position": 1857
+    },
+    {
+        "chunk_id": "resume_9_chunk_5",
+        "chunk_text": "Developed an interactive dashboard for churn analytics, risk monitoring, and business intelligence through visual data exploration.\nImplemented data upload, prediction, and reporting workflows to support customer retention strategies.\nTech Stack: Python, Pandas, NumPy, Scikit-learn, SQL, React.js, Tailwind CSS",
+        "start_position": 1858,
+        "end_position": 2169
+    },
+    {
+        "chunk_id": "resume_9_chunk_6",
+        "chunk_text": "Achievements & Certifications\nQualified for the Final Round of HackOrbit 2025, a national-level hackathon organized by Digital Learning Group, MITS Gwalior, competing\namong 400+ registered teams\nAI Foundations Associate Certificate | Oracle Foundations\nIntroduction to Generative AI   Art of the Possible | AWS Training & Certification | May 2026\n\nLanguages   English\nHindi\nTelugu",
+        "start_position": 2171,
+        "end_position": 2551
+    }
+]
